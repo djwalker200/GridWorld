@@ -1,14 +1,11 @@
 import gym
 import numpy as np  
 import pygame
-from stable_baselines3 import PPO
-from stable_baselines3.ppo import MultiInputPolicy
-from stable_baselines3.common_evaluation import evaluate_policy
-from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvWrapper
-from stable_baselines3.common.vec_env import DummyVecEnv
 
 CANDY_PROB = 0.1
 GOAL_REWARD = 1.0
+CANDY_REWARD = 0.2
+CANDY_MODE_REWARD = 1.0
 DANGER_PENALTY = -2.0
 TIME_PENALTY = -1.0
 
@@ -16,7 +13,7 @@ DEFAULT_SIZE = 5
 WINDOW_SIZE = 512
 RENDER_FPS = 4
 
-class GridWorldDenseAgent(gym.Env):
+class DenseAgent(gym.Env):
     metadata = {"render_modes" : ["human", "rgb_array"], "render_fps" : RENDER_FPS}
     def __init__(self,render_mode=None,size=DEFAULT_SIZE,window_size=WINDOW_SIZE,candy_prob=CANDY_PROB):
 
@@ -28,19 +25,20 @@ class GridWorldDenseAgent(gym.Env):
         
         self.observation_space = gym.spaces.Dict(
             {
-                "agent" : gym.spaces.Box(0,size-1,shape=(2,),dtype=int)
-                "target" : gym.spaces.Box(0,size-1,shape=(2,),dtype=int)
-                "danger" : gym.spaces.Box(0,size-1,shape=(2,),dtype=int)
-                "candy_map" : gym.spaces.MuiltiBinary([size,size])
+                "agent" : gym.spaces.Box(0,size-1,shape=(2,),dtype=int),
+                "target" : gym.spaces.Box(0,size-1,shape=(2,),dtype=int),
+                "danger" : gym.spaces.Box(0,size-1,shape=(2,),dtype=int),
+                "candy_map" : gym.spaces.MultiBinary([size,size]),
+                "candy_mode" : gym.spaces.MultiBinary(1),
             }
         )
 
-        self.action_space = spaces.Discrete(4)
+        self.action_space = gym.spaces.Discrete(4)
         self.action_to_direction = {
-            0: np.array([1,0])
-            1: np.array([0,1])
-            2: np.array([-1,0])
-            3: np.array([0,-1])
+            0: np.array([1,0]),
+            1: np.array([0,1]),
+            2: np.array([-1,0]),
+            3: np.array([0,-1]),
         }
 
         assert render_mode is  None or render_mode in self.metadata["render_modes"]
@@ -55,14 +53,16 @@ class GridWorldDenseAgent(gym.Env):
             "target": self.target_location,
             "danger": self.danger_location,
             "candy_map": self.candy_map,
+            "candy_mode": self.candy_mode,
         }
 
     def get_info(self):
         return {"distance": np.linalg.norm(self.agent_location - self.target_location,ord=1)}
 
-    def reset(self,seed=None,options=None):
+    def reset(self, seed=None,options=None):
 
         self.current_step = 0
+        self.candy_mode = True
 
         self.agent_location = np.random.randint(0,self.size,size=2,dtype=int)
 
@@ -98,7 +98,6 @@ class GridWorldDenseAgent(gym.Env):
         direction = self.action_to_direction[action]
 
         self.agent_location = np.clip(self.agent_location + direction, 0, self.size - 1)
-
         goal_reached = np.array_equal(self.agent_location,self.target_location)
         danger_reached = np.array_equal(self.agent_location,self.danger_location)
 
@@ -113,14 +112,13 @@ class GridWorldDenseAgent(gym.Env):
         self.current_step += 1
         terminated = goal_reached or danger_reached or time_limit_reached
 
-
-        candy_frac = self.candies_eaten / self.num_candies if self.num_candies > 0 else 0
-
-        if terminated:
-            reward = GOAL_REWARD if goal_reached else DANGER_PENALTY if danger_reached else TIME_PENALTY 
-            reward += candy_frac
+        if self.candy_mode:
+            reward = CANDY_MODE_REWARD if candy_reached else DANGER_PENALTY if danger_reached \
+            else TIME_PENALTY if time_limit_reached else -1.0 / (self.size ** 2)
         else:
-            reward = 0
+            reward = GOAL_REWARD if goal_reached else CANDY_REWARD if candy_reached \
+            else DANGER_PENALTY if danger_reached else TIME_PENALTY if time_limit_reached \
+            else -1.0 / (self.size ** 2)
         
         observation = self.get_obs()
 
@@ -160,7 +158,7 @@ class GridWorldDenseAgent(gym.Env):
             canvas,
             (0,255,0),
             pygame.Rect(pix_square_size * self.target_location,
-            (pix_square_size,pix_square_size),
+            (pix_square_size,pix_square_size)),
         )
 
         # Draw danger
@@ -168,7 +166,7 @@ class GridWorldDenseAgent(gym.Env):
             canvas,
             (255,0,0),
             pygame.Rect(pix_square_size * self.danger_location,
-            (pix_square_size,pix_square_size),
+            (pix_square_size,pix_square_size)),
         )
 
         # Draw agent
@@ -176,7 +174,7 @@ class GridWorldDenseAgent(gym.Env):
             canvas,
             (0,0,255),
             pygame.Rect(pix_square_size * self.agent_location,
-            (pix_square_size,pix_square_size),
+            (pix_square_size,pix_square_size)),
         )
 
         # Draw candies
@@ -187,9 +185,8 @@ class GridWorldDenseAgent(gym.Env):
                         canvas,
                         (255,255,0),
                         (np.array([x,y]) + 0.5) * pix_square_size,
-                        (pix_square_size / 3,
+                        (pix_square_size / 3),
                     )
-
         # Draw grid
         for x in range(self.size + 1):
             pygame.draw_line(
@@ -223,3 +220,7 @@ class GridWorldDenseAgent(gym.Env):
         if self.window is not None:
             pygame.display.quit()
             pygame.quit()
+        
+
+
+

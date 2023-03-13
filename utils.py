@@ -1,18 +1,8 @@
 import gym
 from gym import spaces
 import numpy as np  
-import pygame
-from stable_baselines3 import PPO
-from stable_baselines3.ppo import MultiInputPolicy
-from stable_baselines3.common_evaluation import evaluate_policy
-from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvStepReturn, VecEnvWrapper
-from stable_baselines3.common.vec_env import DummyVecEnv
 
-from gridworld_sparse_agent import GridWorldSparseAgent
-from gridworld_dense_agent import GridWorldDenseAgent
-from grid_wrapper import GridWrapper
-
-def custom_eval(model,num_episodes=500):
+def custom_eval(model, num_episodes=500):
     env = model.get_env()
     all_episode_rewards = []
     episode_lengths = []
@@ -25,6 +15,7 @@ def custom_eval(model,num_episodes=500):
         episode_rewards = []
         done = False
         obs = env.reset()
+        
         length = 0
         while not done:
             action, __ = model.predict(obs)
